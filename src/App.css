@@ -1,117 +1,175 @@
-#root {
-	padding: 2rem 0;
-	width: 100%;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
+.translations {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.translation-row {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+    transition: opacity 0.5s;
+}
+
+.fade {
+	opacity: 0.4;
+	transition: opacity 0.5s;
+  }
+  
+  .fade:nth-last-of-type(-n+25) {
+	opacity: 0.3;
+  }
+
+    
+  .fade:nth-last-of-type(-n+15) {
+	opacity: 0.2;
+  }
+
+  .fade:nth-last-of-type(-n+5) {
+	opacity: 0.1;
+  }
+
+.translation-input {
+    display: inline-block;
+    flex: 1;
+    text-align: right;
+}
+
+.translation-separator {
+    display: inline-block;
+    padding: 0 1rem;
+}
+
+.translation-output {
+    display: inline-block;
+    flex: 1;
+    text-align: left;
 }
 
 .textbox-container {
-	width: 100%;
-	display: flex;
-	align-items: center;
+    width: 100%;
+    display: flex;
+    align-items: center;
 }
 
-.textbox-container .textarea {
-	padding: 0 2.5rem;
-	width: 50%;
+.textbox-container .textarea .input-container {
+    padding: 0 2.5rem;
+    width: 50%;
 }
 
 .button-container {
-	width: 100%;
-	height: 5rem;
-	display: flex;
-	justify-content: center;
-	align-items: center;
-	gap: 3rem;
+    width: 100%;
+    height: 5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 3rem;
 }
 
 .button-container > button {
-	min-width: 100px;
+    min-width: 100px;
 }
 
 .progress-container {
-	position: relative;
-	font-size: 14px;
-	color: white;
-	background-color: #e9ecef;
-	border: solid 1px;
-	border-radius: 8px;
-	text-align: left;
-	overflow: hidden;
+    position: relative;
+    font-size: 14px;
+    color: white;
+    background-color: #e9ecef;
+    border: solid 1px;
+    border-radius: 8px;
+    text-align: left;
+    overflow: hidden;
 }
 
 .progress-bar {
-	padding: 0 4px;
-	z-index: 0;
-	top: 0;
-	width: 1%;
-	height: 100%;
-	overflow: hidden;
-	background-color: #007bff;
-	white-space: nowrap;
-	color: transparent;
+    padding: 0 4px;
+    z-index: 0;
+    top: 0;
+    width: 1%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #007bff;
+    white-space: nowrap;
+    color: transparent;
 }
 
 .progress-text {
-	text-align: center;
-	padding: 0 1rem;
+    text-align: center;
+    padding: 0 1rem;
 }
 
 .progress-bars-container {
-	padding: 8px;
-	width: 80%;
+    padding: 8px;
+    width: 80%;
 }
 
 .vertical-switch-button {
-	display: none;
+    display: none;
 }
 
 .switch-button:not([disabled]):hover {
-	border-color: transparent;
+    border-color: transparent;
 }
 
 .switch-button {
-	&:disabled,
-	&[data-disabled] {
-		background-color: transparent;
-	}
+    &:disabled,
+    &[data-disabled] {
+        background-color: transparent;
+    }
 }
 
 .text-error {
-	background-color: #f8d7da;
-	color: #721c24;
-	border: 1px solid #f5c6cb;
-	padding: 10px 15px;
-	border-radius: 5px;
-	margin: 0 2.5rem;
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    padding: 10px 15px;
+    border-radius: 5px;
+    margin: 0 2.5rem;
 }
 
 .underline {
-	text-decoration: underline;
+    text-decoration: underline;
 }
 
+.input-container {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+	width: 100%;
+}
+
+.input-container input {
+    padding: 0.5rem;
+    font-size: 1rem;
+}
+
+
 @media (max-width: 768px) {
-	.textbox-container {
-		flex-direction: column;
-		gap: 2rem;
-	}
+    .textbox-container {
+        flex-direction: column;
+        gap: 2rem;
+    }
 
-	.textbox-container .textarea {
-		width: 100%;
-	}
+    .textbox-container .textarea .input-container {
+        width: 100%;
+    }
 
-	.button-container {
-		flex-direction: column;
-		height: 15rem;
-	}
+    .button-container {
+        flex-direction: column;
+        height: 15rem;
+    }
 
-	.horizontal-switch-button {
-		display: none;
-	}
+    .horizontal-switch-button {
+        display: none;
+    }
 
-	.vertical-switch-button {
-		display: block;
-	}
+    .vertical-switch-button {
+        display: block;
+    }
 }

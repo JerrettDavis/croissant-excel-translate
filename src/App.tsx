@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
-import { ActionIcon, Button, Textarea, Tooltip } from '@mantine/core';
-import { IconSwitchHorizontal, IconSwitchVertical } from '@tabler/icons-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Button } from '@mantine/core';
+import * as XLSX from 'xlsx';
 import {
-	ChatCompletionMessageParam,
-	CreateWebWorkerEngine,
-	EngineInterface,
-	InitProgressReport,
-	hasModelInCache,
+    ChatCompletionMessageParam,
+    CreateWebWorkerEngine,
+    EngineInterface,
+    InitProgressReport,
+    hasModelInCache,
 } from '@mlc-ai/web-llm';
 
 import './App.css';
@@ -15,385 +15,439 @@ import Progress from './components/Progress';
 import { promt_description } from './prompt';
 
 declare global {
-	interface Window {
-		chrome?: any;
-	}
+    interface Window {
+        chrome?: any;
+    }
 }
 
 appConfig.useIndexedDBCache = true;
 
 if (appConfig.useIndexedDBCache) {
-	console.log('Using IndexedDB Cache');
+    console.log('Using IndexedDB Cache');
 } else {
-	console.log('Using Cache API');
+    console.log('Using Cache API');
 }
 
 function App() {
-	const selectedModel = 'CroissantLLMChat-v0.1-q0f16';
-	const [engine, setEngine] = useState<EngineInterface | null>(null);
-	const [progress, setProgress] = useState('Not loaded');
-	const [progressPercentage, setProgressPercentage] = useState(0);
-	const [isFetching, setIsFetching] = useState(false);
-	const [isGenerating, setIsGenerating] = useState(false);
-	const [runtimeStats, setRuntimeStats] = useState('');
-	const [input, setInput] = useState<string>('');
-	const [output, setOutput] = useState<string>('');
-	const [modelInCache, setModelInCache] = useState<boolean | null>(null);
-	const [switched, setSwitched] = useState<boolean>(false);
-	const [errorBrowserMessage, setErrorBrowserMessage] = useState<string | null>(
-		null
-	);
+    const selectedModel = 'CroissantLLMChat-v0.1-q0f16';
+    const [engine, setEngine] = useState<EngineInterface | null>(null);
+    const [progress, setProgress] = useState('Not loaded');
+    const [progressPercentage, setProgressPercentage] = useState(0);
+    const [isFetching, setIsFetching] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [runtimeStats, setRuntimeStats] = useState('');
+    const [translations, setTranslations] = useState<{ input: string; output: string; id: number }[]>([]);
+    const [modelInCache, setModelInCache] = useState<boolean | null>(null);
+    const [errorBrowserMessage, setErrorBrowserMessage] = useState<string | null>(
+        null
+    );
+	const [sourceColumn, setSourceColumn] = useState('B');
+	const [destinationColumn, setDestinationColumn] = useState('C');
+	const [startRow, setStartRow] = useState(2);
+	const [currentRow, setCurrentRow] = useState(0);
+	const [totalRows, setTotalRows] = useState(0);
+	const isGeneratingRef = useRef(isGenerating);
+
+    useEffect(() => {
+        const compatibleBrowser = checkBrowser();
+        checkModelInCache();
+        if (!engine && compatibleBrowser) {
+            loadEngine();
+        }
+    }, []);
 
 	useEffect(() => {
-		const compatibleBrowser = checkBrowser();
-		checkModelInCache();
-		if (!engine && compatibleBrowser) {
-			loadEngine();
+		isGeneratingRef.current = isGenerating;
+	}, [isGenerating]);
+
+    let nextId = 0;
+
+    const addTranslation = (input: string, output: string) => {
+        setTranslations((prevTranslations) => {
+            const updatedTranslations = [{ input, output, id: nextId++ }, ...prevTranslations];
+            while (updatedTranslations.length > 40) {
+				updatedTranslations.pop();
+			}
+            return updatedTranslations;
+        });
+    };
+
+    /**
+     * Check if the browser is compatible with WebGPU.
+     */
+    const checkBrowser = () => {
+        const userAgent = navigator.userAgent;
+        let compatibleBrowser = true;
+
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(
+            userAgent
+        );
+
+        if (isMobile) {
+            setErrorBrowserMessage(
+                'Mobile phones are not compatible with WebGPU.'
+            );
+            compatibleBrowser = false;
+        } else if (/firefox|fxios/i.test(userAgent)) {
+            setErrorBrowserMessage("Firefox is not compatible with WebGPU.");
+            compatibleBrowser = false;
+        } else if (
+            /safari/i.test(userAgent) &&
+            !/chrome|crios|crmo/i.test(userAgent)
+        ) {
+            setErrorBrowserMessage("Safari is not compatible with WebGPU.");
+            compatibleBrowser = false;
+        } else if (!window.chrome) {
+            setErrorBrowserMessage(
+                "Your browser is not compatible with WebGPU."
+            );
+            compatibleBrowser = false;
+        }
+        return compatibleBrowser;
+    };
+
+    /**
+     * Callback for the progress of the model initialization.
+     */
+    const initProgressCallback = (report: InitProgressReport) => {
+        if (report.progress !== 0) {
+            setProgressPercentage(report.progress);
+        }
+        if (report.progress === 1) {
+            setProgressPercentage(0);
+        }
+        setProgress(report.text);
+    };
+
+    /**
+     * Load the engine.
+     */
+    const loadEngine = async () => {
+        setIsFetching(true);
+
+        const engine: EngineInterface = await CreateWebWorkerEngine(
+            new Worker(new URL('./worker.ts', import.meta.url), {
+                type: 'module',
+            }),
+            selectedModel,
+            { initProgressCallback: initProgressCallback, appConfig: appConfig }
+        );
+        setIsFetching(false);
+        setEngine(engine);
+        const isInCache = await hasModelInCache(selectedModel, appConfig);
+        setModelInCache(isInCache);
+        return engine;
+    };
+
+    /**
+     * Send the input to the engine and get the output text translated.
+     */
+    const onSend = async (inputUser: string | number): Promise<string | undefined> => {
+        if (inputUser === '') {
+            return;
+        }
+		// If number or can be converted to number return it as string
+		if (typeof inputUser === 'number' || !isNaN(Number(inputUser))) {
+			return inputUser.toString();
 		}
-	}, []);
 
-	useEffect(() => {
-		setInput(output);
-		onSend(output);
-		setOutput('');
-	}, [switched]);
-
-	/**
-	 * Check if the browser is compatible with WebGPU.
-	 */
-	const checkBrowser = () => {
-		const userAgent = navigator.userAgent;
-		let compatibleBrowser = true;
-
-		const isMobile = /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(
-			userAgent
-		);
-
-		if (isMobile) {
-			setErrorBrowserMessage(
-				'Les téléphones mobiles ne sont pas compatibles avec WebGPU.'
-			);
-			compatibleBrowser = false;
-		} else if (/firefox|fxios/i.test(userAgent)) {
-			setErrorBrowserMessage("Firefox n'est pas compatible avec WebGPU.");
-			compatibleBrowser = false;
-		} else if (
-			/safari/i.test(userAgent) &&
-			!/chrome|crios|crmo/i.test(userAgent)
-		) {
-			setErrorBrowserMessage("Safari n'est pas compatible avec WebGPU.");
-			compatibleBrowser = false;
-		} else if (!window.chrome) {
-			setErrorBrowserMessage(
-				"Votre navigatuer n'est pas compatible avec WebGPU."
-			);
-			compatibleBrowser = false;
-		}
-		return compatibleBrowser;
-	};
-
-	/**
-	 * Callback for the progress of the model initialization.
-	 */
-	const initProgressCallback = (report: InitProgressReport) => {
-		if (
-			modelInCache === true ||
-			report.text.startsWith('Loading model from cache')
-		) {
-			setOutput('Chargement du modèle dans la RAM...');
-		} else {
-			setOutput(
-				'Téléchargement des poids du modèle dans le cache de votre navigateur, cela peut prendre quelques minutes.'
-			);
+		// If only numbers, spaces, and/or special characters return it as string
+		if (/^[0-9\s\W]+$/.test(inputUser)) {
+			return inputUser;
 		}
 
-		if (report.progress !== 0) {
-			setProgressPercentage(report.progress);
+		// If there are no vowels, return it as string
+		if (!/[aeiouy]/i.test(inputUser)) {
+			return inputUser;
 		}
-		if (report.progress === 1) {
-			setProgressPercentage(0);
-			setOutput('');
-		}
-		setProgress(report.text);
-	};
 
-	/**
-	 * Load the engine.
-	 */
-	const loadEngine = async () => {
-		setIsFetching(true);
-		setOutput('Chargement du modèle...');
+        setIsGenerating(true);
 
-		const engine: EngineInterface = await CreateWebWorkerEngine(
-			new Worker(new URL('./worker.ts', import.meta.url), {
-				type: 'module',
-			}),
-			selectedModel,
-			{ initProgressCallback: initProgressCallback, appConfig: appConfig }
-		);
-		setIsFetching(false);
-		setEngine(engine);
-		const isInChache = await hasModelInCache(selectedModel, appConfig);
-		setModelInCache(isInChache);
-		return engine;
-	};
+        let loadedEngine = engine;
 
-	/**
-	 * Send the input to the engine and get the output text translated.
-	 */
-	const onSend = async (inputUser: string) => {
-		if (inputUser === '') {
+        if (!loadedEngine) {
+            try {
+                loadedEngine = await loadEngine();
+            } catch (error) {
+                setIsGenerating(false);
+                console.log(error);
+                setErrorBrowserMessage('Could not load the model because ' + error);
+                return;
+            }
+        }
+
+		const isUpperCase = (str: string) => str === str.toUpperCase();
+		const isLowerCase = (str: string) => str === str.toLowerCase();
+        const paragraphs = inputUser.toString().split('\n');
+
+        try {
+            await loadedEngine.resetChat();
+
+            let assistantMessage = '';
+
+            for (let i = 0; i < paragraphs.length; i++) {
+                const paragraph = paragraphs[i];
+
+                if (paragraph === '') {
+                    assistantMessage += '\n';
+                } else {
+                    const words = paragraph.split(' ');
+                    let prompt = '';
+                    if (words.length > 5) {
+                        prompt = promt_description.promptSentenceEnglishToFrench;
+                    } else {
+                        prompt = promt_description.promptEnglishToFrench;
+                    }
+                    const userMessage: ChatCompletionMessageParam = {
+                        role: 'user',
+                        content: prompt + paragraph,
+                    };
+                    const completion = await loadedEngine.chat.completions.create({
+                        stream: true,
+                        messages: [userMessage],
+						temperature: 0.3,
+						max_gen_len: paragraph.length + 50,
+                    });
+                    let translatedParagraph = '';
+
+                    for await (const chunk of completion) {
+                        const curDelta = chunk.choices[0].delta.content;
+                        if (curDelta) {
+                            translatedParagraph += curDelta;
+                        }
+                    }
+
+                    if (i < paragraphs.length - 1) {
+                        assistantMessage += translatedParagraph + '\n';
+                    } else {
+                        assistantMessage += translatedParagraph;
+                    }
+                }
+            }
+
+			// if our output contains more than triple the input, it's likely a mistake
+			if (assistantMessage.length > 3 * inputUser.length) {
+				console.warn('Output is too long, likely a mistake', inputUser, assistantMessage);
+				assistantMessage = inputUser.toString();
+			}
+
+			if (isUpperCase(inputUser)) {
+				assistantMessage = assistantMessage.toUpperCase();
+			} else if (isLowerCase(inputUser)) {
+				assistantMessage = assistantMessage.toLowerCase();
+			}
+
+			// if the output contains punctuation, and the input doesn't, it's likely a mistake, remove it
+			if (/[.,!?]/.test(assistantMessage) && !/[.,!?]/.test(inputUser)) {
+				console.warn('Output contains punctuation, likely a mistake', inputUser, assistantMessage);
+				assistantMessage = assistantMessage.replace(/[.,!?]/g, '');
+			}
+
+            //setIsGenerating(false);
+            setRuntimeStats(await loadedEngine.runtimeStatsText());
+            return assistantMessage;
+        } catch (error) {
+            setIsGenerating(false);
+            console.log('EXCEPTION');
+            console.log(error);
+            setErrorBrowserMessage('Error. Please try again.');
+            return;
+        }
+    };
+
+    /**
+     * Stop the generation.
+     */
+    const onStop = () => {
+        if (!engine) {
+            console.log('Engine not loaded');
+            return;
+        }
+
+        setIsGenerating(false);
+        engine.interruptGenerate();
+    };
+
+    /**
+     * Check if the model is in the cache.
+     */
+    const checkModelInCache = async () => {
+        const isInCache = await hasModelInCache(selectedModel, appConfig);
+        setModelInCache(isInCache);
+        console.log(`${selectedModel} in cache : ${isInCache}`);
+    };
+
+    /**
+     * Handle file upload and process the Excel file.
+     */
+	const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		if (!file) {
 			return;
 		}
-		setIsGenerating(true);
-		setOutput('');
+	
+		const reader = new FileReader();
+		reader.onload = async (e) => {
+			setIsGenerating(true);
+			isGeneratingRef.current = true;
+	
+			const data = new Uint8Array(e.target?.result as ArrayBuffer);
+			const workbook = XLSX.read(data, { type: 'array' });
+			const sheetName = workbook.SheetNames[0];
+			const worksheet = workbook.Sheets[sheetName];
+			const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+	
+			// Get the index of the columns
+			const sourceColumnIndex = sourceColumn.charCodeAt(0) - 'A'.charCodeAt(0);
+			const destinationColumnIndex = destinationColumn.charCodeAt(0) - 'A'.charCodeAt(0);
+	
 
-		let loadedEngine = engine;
-
-		if (!loadedEngine) {
-			try {
-				loadedEngine = await loadEngine();
-			} catch (error) {
-				setIsGenerating(false);
-				console.log(error);
-				setOutput('Could not load the model because ' + error);
-				return;
-			}
-		}
-
-		const paragraphs = inputUser.split('\n');
-
-		try {
-			await loadedEngine.resetChat();
-
-			let assistantMessage = '';
-
-			for (let i = 0; i < paragraphs.length; i++) {
-				const paragraph = paragraphs[i];
-
-				if (paragraph === '') {
-					assistantMessage += '\n';
-					setOutput((prevOutput) => prevOutput + '\n');
-				} else {
-					const words = paragraph.split(' ');
-					let prompt = '';
-					if (words.length > 5) {
-						prompt = switched
-							? promt_description.promptSentenceEnglishToFrench
-							: promt_description.promptSentenceFrenchToEnglish;
-					} else {
-						prompt = switched
-							? promt_description.promptEnglishToFrench
-							: promt_description.promptFrenchToEnglish;
-					}
-					const userMessage: ChatCompletionMessageParam = {
-						role: 'user',
-						content: prompt + paragraph,
-					};
-					const completion = await loadedEngine.chat.completions.create({
-						stream: true,
-						messages: [userMessage],
-					});
-					let translatedParagraph = '';
-
-					for await (const chunk of completion) {
-						const curDelta = chunk.choices[0].delta.content;
-						if (curDelta) {
-							translatedParagraph += curDelta;
-							setOutput((prevOutput) => prevOutput + curDelta);
-						}
-					}
-
-					if (i < paragraphs.length - 1) {
-						assistantMessage += translatedParagraph + '\n';
-						setOutput((prevOutput) => prevOutput + '\n');
-					} else {
-						assistantMessage += translatedParagraph;
-					}
+			setTotalRows(jsonData.length)
+			// Skip the first row and process each value in the source column
+			for (let i = startRow - 1; i < jsonData.length; i++) {
+				if (!isGeneratingRef.current) {
+					break;
 				}
+				const row = jsonData[i] as string[];
+				const value = row[sourceColumnIndex]; // Get the value from the source column
+				if (value) {
+					const response = await onSend(value);
+					row[destinationColumnIndex] = response || ''; // Save the generated message to the destination column
+					
+					addTranslation(value, response || '');
+				}
+				setCurrentRow(i + 1);
 			}
-
-			setOutput(assistantMessage);
+	
+			// Update the worksheet with the new data
+			const newWorksheet = XLSX.utils.json_to_sheet(jsonData, { skipHeader: true });
+			workbook.Sheets[sheetName] = newWorksheet;
+	
+			// Generate a new Excel file with the updated data
+			const updatedExcel = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+			const blob = new Blob([updatedExcel], { type: 'application/octet-stream' });
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = 'updated_file.xlsx';
+			a.click();
+			window.URL.revokeObjectURL(url);
 			setIsGenerating(false);
-			setRuntimeStats(await loadedEngine.runtimeStatsText());
-		} catch (error) {
-			setIsGenerating(false);
-			console.log('EXECPTION');
-			console.log(error);
-			setOutput('Error. Please try again.');
-			return;
-		}
+		};
+		reader.readAsArrayBuffer(file);
 	};
+	
 
-	/**
-	 * Reset the chat engine and the user input.
-	 */
-	const reset = async () => {
-		if (!engine) {
-			console.log('Engine not loaded');
-			return;
-		}
-		await engine.resetChat();
-		setInput('');
-		setOutput('');
-	};
+    return (
+        <>
+            <h1>Bulk Excel English-to-French Translator</h1>
+            <h2>LLM-Powered Translations for the Masses</h2>
+            <p>
+                This translation is processed locally in your browser. Your data does not leave your computer and does not transit through any server.
+				LLMs are large language models that can generate human-like text based on the input you provide.
+				they are trained on a large corpus of text data and can generate text in multiple languages.
+				They are not perfect and may generate incorrect or inappropriate text. Please review the generated text before using it.
+            </p>
+            {errorBrowserMessage && (
+                <p className='text-error'>
+                    {errorBrowserMessage} Please check{' '}
+                    <a href='https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API#browser_compatibility'>
+                        <span className='underline'>this page</span>
+                    </a>{' '}
+                    for browser compatibility.
+                </p>
+            )}
 
-	/**
-	 * Stop the generation.
-	 */
-	const onStop = () => {
-		if (!engine) {
-			console.log('Engine not loaded');
-			return;
-		}
-
-		setIsGenerating(false);
-		engine.interruptGenerate();
-	};
-
-	/**
-	 * Check if the model is in the cache.
-	 */
-	const checkModelInCache = async () => {
-		const isInChache = await hasModelInCache(selectedModel, appConfig);
-		setModelInCache(isInChache);
-		console.log(`${selectedModel} in cache : ${isInChache}`);
-	};
-
-	return (
-		<>
-			<h1>Traduction Anglais/Français</h1>
-			<h2>Un service 100% souverain et confidentiel</h2>
-			<p>
-				Cette traduction est le résultat d'un traitement local dans votre
-				navigateur. Vos données ne quittent pas votre ordinateur et ne
-				transitent par aucun serveur.
-			</p>
-			{errorBrowserMessage && (
-				<p className='text-error'>
-					{errorBrowserMessage} Veuillez consulter{' '}
-					<a href='https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API#browser_compatibility'>
-						<span className='underline'>cette page</span>
-					</a>{' '}
-					pour voir la compatibilité avec les navigateurs.
-				</p>
-			)}
-
-			{modelInCache !== null && (
-				<p>
-					Modèle téléchargé dans le cache de votre navigateur :{' '}
-					{modelInCache === true ? '✅' : '❌'}
-				</p>
-			)}
+            {modelInCache !== null && (
+                <p>
+                    Model downloaded in your browser cache: {modelInCache === true ? '✅' : '❌'}
+                </p>
+            )}
 
 			<div className='textbox-container'>
-				<Textarea
-					value={input}
-					onChange={(e) => setInput(e.currentTarget.value)}
-					autosize
-					minRows={15}
-					maxRows={15}
-					disabled={isFetching}
-					variant='filled'
-					size='lg'
-					label={switched ? 'Anglais' : 'Français'}
-					placeholder='Écrivez ou collez votre texte ici.'
-					className='textarea'
-				/>
-
-				<div>
-					<div className='horizontal-switch-button'>
-						<Tooltip label='Intervertir les langues source et cible'>
-							<ActionIcon
-								variant='transparent'
-								color='black'
-								size='xl'
-								data-disabled={isFetching || isGenerating}
-								onClick={() => setSwitched((prevState) => !prevState)}
-								className='switch-button'
-							>
-								<IconSwitchHorizontal style={{ width: '90%', height: '90%' }} />
-							</ActionIcon>
-						</Tooltip>
-					</div>
-					<div className='vertical-switch-button'>
-						<Tooltip label='Intervertir les langues source et cible'>
-							<ActionIcon
-								variant='transparent'
-								color='black'
-								size='xl'
-								disabled={isFetching || isGenerating}
-								onClick={() => setSwitched((prevState) => !prevState)}
-								className='switch-button'
-							>
-								<IconSwitchVertical style={{ width: '90%', height: '90%' }} />
-							</ActionIcon>
-						</Tooltip>
-					</div>
+				<div className="input-container">
+					<input
+						type="text"
+						value={sourceColumn}
+						onChange={(e) => setSourceColumn(e.target.value.toUpperCase())}
+						placeholder="Source Column"
+					/>
+					<input
+						type="text"
+						value={destinationColumn}
+						onChange={(e) => setDestinationColumn(e.target.value.toUpperCase())}
+						placeholder="Destination Column"
+					/>
+					<input
+						type="number"
+						value={startRow}
+						onChange={(e) => setStartRow(Number(e.target.value))}
+						placeholder="Start Row"
+					/>
 				</div>
-
-				<Textarea
-					value={output}
-					autosize
-					minRows={15}
-					maxRows={15}
-					disabled={isFetching}
-					variant='filled'
-					size='lg'
-					label={switched ? 'Français' : 'Anglais'}
-					className='textarea'
-				/>
 			</div>
 
-			<div className='button-container'>
-				<Button
-					variant='light'
-					color='black'
-					onClick={reset}
-					disabled={isGenerating || isFetching}
+            <div className='button-container'>
+                <Button
+                    variant='light'
+                    onClick={onStop}
+                    color='black'
+                    disabled={!isGenerating}
+                    loading={isFetching}
+                >
+                    Stop
+                </Button>
+
+                <Button
+                    variant='light'
+                    color='black'
+                    component='label'
+					disabled={isGenerating}
 					loading={isFetching}
-				>
-					Effacer
-				</Button>
+                >
+					{currentRow > 0 && totalRows > 0 ? `Converting Excel File (${currentRow}/${totalRows})` : 'Upload Excel File'}
+                    <input
+                        type='file'
+                        hidden
+                        accept='.xlsx, .xls'					
+                        onChange={handleFileUpload}
+                    />
+                </Button>
+            </div>
 
-				<Button
-					variant='light'
-					color='black'
-					onClick={() => onSend(input)}
-					disabled={isGenerating || isFetching}
-					loading={isGenerating || isFetching}
-				>
-					Traduire
-				</Button>
+            {progressPercentage !== 0 && (
+                <div className='progress-bars-container'>
+                    <Progress percentage={progressPercentage} />
+                </div>
+            )}
 
-				<Button
-					variant='light'
-					onClick={onStop}
-					color='black'
-					disabled={!isGenerating}
-					loading={isFetching}
-				>
-					Stop
-				</Button>
-			</div>
+            <div className='progress-text'>{progress}</div>
+            {runtimeStats && <p>Performance: {runtimeStats}</p>}
+            <p>
+                Powered by{' '}
+                <a href='https://huggingface.co/croissantllm' target='_blank'>
+                    🥐CroissantLLM
+                </a>
+                , a sovereign LLM by CentraleSupélec.
+            </p>
 
-			{progressPercentage !== 0 && (
-				<div className='progress-bars-container'>
-					<Progress percentage={progressPercentage} />
-				</div>
-			)}
-
-			<div className='progress-text'>{progress}</div>
-			{runtimeStats && <p>Performances : {runtimeStats}</p>}
-			<p>
-				Motorisé par {''}
-				<a href='https://huggingface.co/croissantllm' target='_blank'>
-					🥐CroissantLLM
-				</a>
-				, un LLM souverain par CentraleSupélec.
-			</p>
-		</>
-	);
+            <div className='translations'>
+                {translations.map((translation, index) => (
+                    <div key={translation.id} className={`translation-row ${translations.length > 20 && index > translations.length / 4? 'fade' : ''}`}>
+                        <div className='translation-input'>
+                            {translation.input}
+                        </div>
+						<div className="translation-separator">
+							➡️
+						</div>
+                        <div className='translation-output'>
+                            {translation.output}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </>
+    );
 }
 
 export default App;
