@@ -300,10 +300,8 @@ function App() {
 			// Get the index of the columns
 			const sourceColumnIndex = sourceColumn.charCodeAt(0) - 'A'.charCodeAt(0);
 			const destinationColumnIndex = destinationColumn.charCodeAt(0) - 'A'.charCodeAt(0);
-	
 
 			setTotalRows(jsonData.length)
-			// Skip the first row and process each value in the source column
 			for (let i = startRow - 1; i < jsonData.length; i++) {
 				if (!isGeneratingRef.current) {
 					break;
