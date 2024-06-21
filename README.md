@@ -2,7 +2,7 @@
 
 # CroissantLLM-Translate
 
-[Demo App](https://numerique-gouv.github.io/croissant-translate/)
+[Demo App](https://jerrettdavis.github.io/croissant-excel-translate/)
 
 </div>
 
@@ -51,7 +51,7 @@ If you need further information, you can check the [MLC LLM documentation](https
 
 ## Try it out
 
-You can [try it here](https://numerique-gouv.github.io/croissant-translate/). You can also run the project locally and contribute to improve the interface, speed up initial model loading time and fix bugs, by following these steps:
+You can [try it here](https://jerrettdavis.github.io/croissant-excel-translate/). You can also run the project locally and contribute to improve the interface, speed up initial model loading time and fix bugs, by following these steps:
 
 ### Prerequisite
 
@@ -64,10 +64,10 @@ If you're looking to make changes, run the development environment with live rel
 
 ```sh
 # Clone the repository
-git clone https://github.com/numerique-gouv/croissant-translate.git
+git clone https://jerrettdavis.github.io/croissant-excel-translate.git
 
 # Enter the project folder
-cd ./croissant-translate
+cd ./croissant-excel-translate
 
 # Install dependencies
 npm install
