@@ -41,12 +41,15 @@ function App() {
     const [errorBrowserMessage, setErrorBrowserMessage] = useState<string | null>(
         null
     );
+	const [sourceSheet, setSourceSheet] = useState('Sheet1');
 	const [sourceColumn, setSourceColumn] = useState('B');
 	const [destinationColumn, setDestinationColumn] = useState('C');
 	const [startRow, setStartRow] = useState(2);
 	const [currentRow, setCurrentRow] = useState(0);
 	const [totalRows, setTotalRows] = useState(0);
 	const isGeneratingRef = useRef(isGenerating);
+	const translationCache = useRef<Map<string, string>>(new Map());
+	
 
     useEffect(() => {
         const compatibleBrowser = checkBrowser();
@@ -149,7 +152,7 @@ function App() {
 		// If number or can be converted to number return it as string
 		if (typeof inputUser === 'number' || !isNaN(Number(inputUser))) {
 			return inputUser.toString();
-		}
+		}		
 
 		// If only numbers, spaces, and/or special characters return it as string
 		if (/^[0-9\s\W]+$/.test(inputUser)) {
@@ -159,6 +162,14 @@ function App() {
 		// If there are no vowels, return it as string
 		if (!/[aeiouy]/i.test(inputUser)) {
 			return inputUser;
+		}
+
+		const input = inputUser.toString().trim();
+
+		// Step 2: Check cache before translation
+		const cachedOutput = translationCache.current.get(input);
+		if (cachedOutput) {
+			return cachedOutput; // Step 3: Use cached value if available
 		}
 
         setIsGenerating(true);
@@ -178,7 +189,7 @@ function App() {
 
 		const isUpperCase = (str: string) => str === str.toUpperCase();
 		const isLowerCase = (str: string) => str === str.toLowerCase();
-        const paragraphs = inputUser.toString().split('\n');
+        const paragraphs = input.split('\n');
 
         try {
             await loadedEngine.resetChat();
@@ -226,11 +237,12 @@ function App() {
             }
 
 			// if our output contains more than triple the input, it's likely a mistake
-			if (assistantMessage.length > 3 * inputUser.length) {
-				console.warn('Output is too long, likely a mistake', inputUser, assistantMessage);
-				assistantMessage = inputUser.toString();
+			if (assistantMessage.length > 3 * input.length) {
+				console.warn('Output is too long, likely a mistake', input, assistantMessage);
+				assistantMessage = input;
 			}
 
+			// if the input is all uppercase or all lowercase, make the output match
 			if (isUpperCase(inputUser)) {
 				assistantMessage = assistantMessage.toUpperCase();
 			} else if (isLowerCase(inputUser)) {
@@ -239,12 +251,15 @@ function App() {
 
 			// if the output contains punctuation, and the input doesn't, it's likely a mistake, remove it
 			if (/[.,!?]/.test(assistantMessage) && !/[.,!?]/.test(inputUser)) {
-				console.warn('Output contains punctuation, likely a mistake', inputUser, assistantMessage);
+				console.warn('Output contains punctuation, likely a mistake', input, assistantMessage);
 				assistantMessage = assistantMessage.replace(/[.,!?]/g, '');
 			}
 
             //setIsGenerating(false);
             setRuntimeStats(await loadedEngine.runtimeStatsText());
+
+			translationCache.current.set(input, assistantMessage);
+
             return assistantMessage;
         } catch (error) {
             setIsGenerating(false);
@@ -293,8 +308,16 @@ function App() {
 	
 			const data = new Uint8Array(e.target?.result as ArrayBuffer);
 			const workbook = XLSX.read(data, { type: 'array' });
-			const sheetName = workbook.SheetNames[0];
-			const worksheet = workbook.Sheets[sheetName];
+			const fallbackSheetName = workbook.SheetNames[0];
+
+			let sheetName = sourceSheet;
+			let worksheet = workbook.Sheets[sourceSheet];
+			
+			if (!worksheet) {
+				worksheet = workbook.Sheets[fallbackSheetName];
+				sheetName = fallbackSheetName;
+				setSourceSheet(fallbackSheetName);
+			}
 			const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 	
 			// Get the index of the columns
@@ -346,6 +369,12 @@ function App() {
 				they are trained on a large corpus of text data and can generate text in multiple languages.
 				They are not perfect and may generate incorrect or inappropriate text. Please review the generated text before using it.
             </p>
+			<p>
+				To use this tool, upload an Excel file with the text you want to translate in one column and the translated text will be generated in another column.
+				You can specify the source and destination columns, the source sheet, and the starting row. The translation will begin as soon as you upload the file.
+				The generated file will be downloaded automatically once the translation is complete. You can stop the translation at any time by clicking the "Stop" 
+				button, and the generated file will be downloaded with the translations that have been completed.
+			</p>
             {errorBrowserMessage && (
                 <p className='text-error'>
                     {errorBrowserMessage} Please check{' '}
@@ -364,6 +393,12 @@ function App() {
 
 			<div className='textbox-container'>
 				<div className="input-container">
+				<input
+						type="text"
+						value={sourceSheet}
+						onChange={(e) => setSourceSheet(e.target.value)}
+						placeholder="Source Sheet"
+					/>
 					<input
 						type="text"
 						value={sourceColumn}
